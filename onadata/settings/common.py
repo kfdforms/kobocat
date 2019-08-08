@@ -9,14 +9,70 @@
 # imports this one.
 # The local files should be used as the value for your DJANGO_SETTINGS_FILE
 # environment variable as needed.
+from django.core.exceptions import SuspiciousOperation
+from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
+import ldap
 import logging
 import multiprocessing
 import os
+from pymongo import MongoClient
 import subprocess  # nopep8, used by included files
 import sys  # nopep8, used by included files
 
-from django.core.exceptions import SuspiciousOperation
-from pymongo import MongoClient
+
+# Baseline LDAP configuration.
+AUTH_LDAP_SERVER_URI = os.environ.get('LDAP_SERVER_URI',
+                                      'ldap://ldap.aranya.gov.in:389')
+AUTH_LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN',
+                                   'cn=admin,dc=aranya,dc=gov,dc=in')
+AUTH_LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD',
+                                         'admin123')
+
+AUTH_LDAP_USER_SEARCH = LDAPSearch(
+    os.environ.get('LDAP_USER_SEARCH_BASE', 'dc=aranya,dc=gov,dc=in'),
+    ldap.SCOPE_SUBTREE,
+    "(uid=%(user)s)")
+# or perhaps:
+# AUTH_LDAP_USER_DN_TEMPLATE = "uid=%(user)s,ou=users,dc=example,dc=com"
+
+# Set up the basic group parameters.
+AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
+    os.environ.get('LDAP_GROUP_SEARCH_BASE', 'dc=aranya,dc=gov,dc=in'),
+    ldap.SCOPE_SUBTREE,
+    "(objectClass=groupOfNames)")
+AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
+
+# Populate the Django user from the LDAP directory.
+AUTH_LDAP_USER_ATTR_MAP = {
+    "first_name": "givenName",
+    "last_name": "sn",
+}
+
+"""
+Additional LDAP settings that may be activated as per requirement
+-----------------------------------------------------------------
+
+# Simple group restrictions
+AUTH_LDAP_REQUIRE_GROUP = "cn=enabled,ou=groups,dc=aranya,dc=gov,dc=in"
+AUTH_LDAP_DENY_GROUP = "cn=disabled,ou=groups,dc=aranya,dc=gov,dc=in"
+
+# USER FLAGS that can be populated based on membership of certain groups
+
+AUTH_LDAP_USER_FLAGS_BY_GROUP = {
+   "is_active": "cn=active,ou=groups,dc=aranya,dc=gov,dc=in",
+   "is_staff": "cn=staff,ou=groups,dc=aranya,dc=gov,dc=in",
+   "is_superuser": "cn=superuser,ou=groups,dc=aranya,dc=gov,dc=in"
+}
+
+# Use LDAP group membership to calculate group permissions.
+AUTH_LDAP_FIND_GROUP_PERMS = True
+
+# Cache group memberships for an hour to minimize LDAP traffic
+AUTH_LDAP_CACHE_GROUPS = False
+AUTH_LDAP_GROUP_CACHE_TIMEOUT = 3600
+
+"""
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 ONADATA_DIR = BASE_DIR
@@ -315,6 +371,7 @@ AUTH_PROFILE_MODULE = 'onadata.apps.main.UserProfile'
 # case insensitive usernames -- DISABLED for KoBoForm compatibility
 AUTHENTICATION_BACKENDS = (
     #'onadata.apps.main.backends.ModelBackend',
+    'django_auth_ldap.backend.LDAPBackend',
     'django.contrib.auth.backends.ModelBackend',
     'guardian.backends.ObjectPermissionBackend',
 )
